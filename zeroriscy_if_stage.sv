@@ -270,7 +270,7 @@ module zeroriscy_if_stage
 `ifndef VERILATOR
         // there should never be a grant when there is no request
         assert property (
-          @(posedge clk) (instr_gnt_i) |-> (instr_req_o) )
+          @(posedge clk) disable iff(~rst_n) (instr_gnt_i) |-> (instr_req_o) )
         else $warning("There was a grant without a request");
 `endif
 

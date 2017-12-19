@@ -772,20 +772,20 @@ module zeroriscy_id_stage
 `ifndef VERILATOR
   // make sure that branch decision is valid when jumping
   assert property (
-    @(posedge clk) (branch_decision_i !== 1'bx || branch_in_id == 1'b0) ) else begin $display("Branch decision is X"); $stop; end
+    @(posedge clk) disable iff(~rst_n) (branch_decision_i !== 1'bx || branch_in_id == 1'b0) ) else begin $display("Branch decision is X"); $stop; end
 
 `ifdef CHECK_MISALIGNED
   assert property (
-    @(posedge clk) (~data_misaligned_i) ) else $display("Misaligned memory access at %x",pc_id_i);
+    @(posedge clk) disable iff(~rst_n) (~data_misaligned_i) ) else $display("Misaligned memory access at %x",pc_id_i);
 `endif
 
   // the instruction delivered to the ID stage should always be valid
   assert property (
-    @(posedge clk) (instr_valid_i & (~illegal_c_insn_i)) |-> (!$isunknown(instr_rdata_i)) ) else $display("Instruction is valid, but has at least one X");
+    @(posedge clk) disable iff(~rst_n) (instr_valid_i & (~illegal_c_insn_i)) |-> (!$isunknown(instr_rdata_i)) ) else $display("Instruction is valid, but has at least one X");
 
   // make sure multicycles enable signals are unique
   assert property (
-    @(posedge clk) ~(data_req_ex_o & multdiv_int_en )) else $display("Multicycles enable signals are not unique");
+    @(posedge clk) disable iff(~rst_n) ~(data_req_ex_o & multdiv_int_en )) else $display("Multicycles enable signals are not unique");
 
 `endif
 
