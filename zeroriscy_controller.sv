@@ -132,10 +132,10 @@ module zeroriscy_controller
   always_ff @(negedge clk)
   begin
     // print warning in case of decoding errors
-    if (is_decoding_o && illegal_insn_i) begin
-      $display("%t: Illegal instruction (core %0d) at PC 0x%h:", $time, zeroriscy_core.core_id_i,
-               zeroriscy_id_stage.pc_id_i);
-    end
+    //if (is_decoding_o && illegal_insn_i) begin
+    //  $display("%t: Illegal instruction (core %0d) at PC 0x%h:", $time, zeroriscy_core.core_id_i,
+    //           zeroriscy_id_stage.pc_id_i);
+    //end
   end
   // synopsys translate_on
 `endif
