@@ -50,11 +50,11 @@ module zeroriscy_core
   input  logic [31:0] boot_addr_i,
 
   // Instruction memory interface
-  output logic                         instr_req_o,
-  input  logic                         instr_gnt_i,
-  input  logic                         instr_rvalid_i,
-  output logic                  [31:0] instr_addr_o,
-  input  logic                  [31:0] instr_rdata_i,
+  output logic        instr_req_o,
+  input  logic        instr_gnt_i,
+  input  logic        instr_rvalid_i,
+  output logic [31:0] instr_addr_o,
+  input  logic [31:0] instr_rdata_i,
 
   // Data memory interface
   output logic        data_req_o,
@@ -226,6 +226,47 @@ module zeroriscy_core
   //core busy signals
   logic        core_ctrl_firstfetch, core_busy_int, core_busy_q;
 
+  // ======================================
+  //           INTERNAL
+  // ======================================
+  // Instruction memory interface
+  logic        instr_req_inter;
+  logic        instr_gnt_inter;
+  logic        instr_rvalid_inter;
+  logic [31:0] instr_addr_inter;
+  logic [31:0] instr_rdata_inter;
+
+  // Data memory interface
+  logic        data_req_inter;
+  logic        data_gnt_inter;
+  logic        data_rvalid_inter;
+  logic        data_we_inter;
+  logic [3:0]  data_be_inter;
+  logic [31:0] data_addr_inter;
+  logic [31:0] data_wdata_inter;
+  logic [31:0] data_rdata_inter;
+
+  // ======================================
+  //           DEBUG MODULE
+  // ======================================
+  // Instruction memory interface
+  logic        instr_req_dbg;
+  logic        instr_gnt_dbg;
+  logic        instr_rvalid_dbg;
+  logic [31:0] instr_addr_dbg;
+  logic [31:0] instr_rdata_dbg;
+
+  // Data memory interface
+  logic        data_req_dbg;
+  logic        data_gnt_dbg;
+  logic        data_rvalid_dbg;
+  logic        data_we_dbg;
+  logic [3:0]  data_be_dbg;
+  logic [31:0] data_addr_dbg;
+  logic [31:0] data_wdata_dbg;
+  logic [31:0] data_rdata_dbg;
+  logic        data_err_dbg;
+
   //////////////////////////////////////////////////////////////////////////////////////////////
   //   ____ _            _      __  __                                                   _    //
   //  / ___| | ___   ___| | __ |  \/  | __ _ _ __   __ _  __ _  ___ _ __ ___   ___ _ __ | |_  //
@@ -244,7 +285,7 @@ module zeroriscy_core
 
   // if we are sleeping on a barrier let's just wait on the instruction
   // interface to finish loading instructions
-  assign core_busy_int = (data_load_event_ex & data_req_o) ? if_busy : (if_busy | ctrl_busy | lsu_busy);
+  assign core_busy_int = (data_load_event_ex & data_req_inter) ? if_busy : (if_busy | ctrl_busy | lsu_busy);
 
   always_ff @(posedge clk, negedge rst_ni)
   begin
@@ -295,11 +336,11 @@ module zeroriscy_core
     .req_i               ( instr_req_int     ),
 
     // instruction cache interface
-    .instr_req_o         ( instr_req_o       ),
-    .instr_addr_o        ( instr_addr_o      ),
-    .instr_gnt_i         ( instr_gnt_i       ),
-    .instr_rvalid_i      ( instr_rvalid_i    ),
-    .instr_rdata_i       ( instr_rdata_i     ),
+    .instr_req_o         ( instr_req_inter   ),
+    .instr_addr_o        ( instr_addr_inter  ),
+    .instr_gnt_i         ( instr_gnt_inter   ),
+    .instr_rvalid_i      ( instr_rvalid_inter),
+    .instr_rdata_i       ( instr_rdata_inter ),
 
     // outputs to ID stage
     .instr_valid_id_o    ( instr_valid_id    ),
@@ -511,16 +552,17 @@ module zeroriscy_core
     .rst_n                 ( rst_ni             ),
 
     //output to data memory
-    .data_req_o            ( data_req_o         ),
-    .data_gnt_i            ( data_gnt_i         ),
-    .data_rvalid_i         ( data_rvalid_i      ),
-    .data_err_i            ( data_err_i         ),
+    .data_req_o            ( data_req_inter     ),
+    .data_gnt_i            ( data_gnt_inter     ),
+    .data_rvalid_i         ( data_rvalid_inter  ),
+    //.data_err_i            ( data_err_i         ),
+    .data_err_i            ( 1'b0               ),
 
-    .data_addr_o           ( data_addr_o        ),
-    .data_we_o             ( data_we_o          ),
-    .data_be_o             ( data_be_o          ),
-    .data_wdata_o          ( data_wdata_o       ),
-    .data_rdata_i          ( data_rdata_i       ),
+    .data_addr_o           ( data_addr_inter    ),
+    .data_we_o             ( data_we_inter      ),
+    .data_be_o             ( data_be_inter      ),
+    .data_wdata_o          ( data_wdata_inter   ),
+    .data_rdata_i          ( data_rdata_inter   ),
 
     // signal from ex stage
     .data_we_ex_i          ( data_we_ex         ),
@@ -604,8 +646,8 @@ module zeroriscy_core
     .jump_i                  ( perf_jump          ),
     .branch_i                ( perf_branch        ),
     .branch_taken_i          ( perf_tbranch       ),
-    .mem_load_i              ( data_req_o & data_gnt_i & (~data_we_o) ),
-    .mem_store_i             ( data_req_o & data_gnt_i & data_we_o    ),
+    .mem_load_i              ( data_req_inter & data_gnt_inter & (~data_we_inter) ),
+    .mem_store_i             ( data_req_inter & data_gnt_inter & data_we_inter    ),
 
     .ext_counters_i          ( ext_perf_counters_i                    )
   );
@@ -679,7 +721,22 @@ module zeroriscy_core
     .sleeping_i        ( sleeping           ),
 
     .jump_addr_o       ( dbg_jump_addr      ), // PC from debug unit
-    .jump_req_o        ( dbg_jump_req       )  // set PC to new value
+    .jump_req_o        ( dbg_jump_req       ), // set PC to new value
+
+    // debug memory
+    .instr_req_i       ( instr_req_dbg      ),
+    .instr_addr_i      ( instr_addr_dbg     ),
+    .instr_gnt_o       ( instr_gnt_dbg      ),
+    .instr_rvalid_o    ( instr_rvalid_dbg   ),
+    .instr_rdata_o     ( instr_rdata_dbg    ),
+    .data_req_i        ( data_req_dbg       ),
+    .data_gnt_o        ( data_gnt_dbg       ),
+    .data_rvalid_o     ( data_rvalid_dbg    ),
+    .data_addr_i       ( data_addr_dbg      ),
+    .data_we_i         ( data_we_dbg        ),
+    .data_be_i         ( data_be_dbg        ),
+    .data_wdata_i      ( data_wdata_dbg     ),
+    .data_rdata_o      ( data_rdata_dbg     )
   );
 
 `ifndef VERILATOR
@@ -714,12 +771,12 @@ module zeroriscy_core
     .ex_reg_we      ( id_stage_i.regfile_we_mux            ),
     .ex_reg_wdata   ( id_stage_i.regfile_wdata_mux         ),
     .data_valid_lsu ( data_valid_lsu                       ),
-    .ex_data_addr   ( data_addr_o                          ),
-    .ex_data_req    ( data_req_o                           ),
-    .ex_data_gnt    ( data_gnt_i                           ),
-    .ex_data_we     ( data_we_o                            ),
+    .ex_data_addr   ( data_addr_inter                      ),
+    .ex_data_req    ( data_req_inter                       ),
+    .ex_data_gnt    ( data_gnt_inter                       ),
+    .ex_data_we     ( data_we_inter                        ),
 
-    .ex_data_wdata  ( data_wdata_o                         ),
+    .ex_data_wdata  ( data_wdata_inter                     ),
 
     .lsu_reg_wdata  ( regfile_wdata_lsu                    ),
 
@@ -733,4 +790,53 @@ module zeroriscy_core
   );
 `endif
 `endif
+
+  mem_mux mem_mux_i
+  (
+    // INPUT
+    .instr_req_i      ( instr_req_inter   ),
+    .instr_gnt_o      ( instr_gnt_inter   ),
+    .instr_rvalid_o   ( instr_rvalid_inter),
+    .instr_addr_i     ( instr_addr_inter  ),
+    .instr_rdata_o    ( instr_rdata_inter ),
+    .data_req_i       ( data_req_inter    ),
+    .data_gnt_o       ( data_gnt_inter    ),
+    .data_rvalid_o    ( data_rvalid_inter ),
+    .data_we_i        ( data_we_inter     ),
+    .data_be_i        ( data_be_inter     ),
+    .data_addr_i      ( data_addr_inter   ),
+    .data_wdata_i     ( data_wdata_inter  ),
+    .data_rdata_o     ( data_rdata_inter  ),
+
+    // DEBUG MODULE
+    .instr_req_dbg    ( instr_req_dbg     ),
+    .instr_gnt_dbg    ( instr_gnt_dbg     ),
+    .instr_rvalid_dbg ( instr_rvalid_dbg  ),
+    .instr_addr_dbg   ( instr_addr_dbg    ),
+    .instr_rdata_dbg  ( instr_rdata_dbg   ),
+    .data_req_dbg     ( data_req_dbg      ),
+    .data_gnt_dbg     ( data_gnt_dbg      ),
+    .data_rvalid_dbg  ( data_rvalid_dbg   ),
+    .data_we_dbg      ( data_we_dbg       ),
+    .data_be_dbg      ( data_be_dbg       ),
+    .data_addr_dbg    ( data_addr_dbg     ),
+    .data_wdata_dbg   ( data_wdata_dbg    ),
+    .data_rdata_dbg   ( data_rdata_dbg    ),
+
+    // OUTPUT
+    .instr_req_o      ( instr_req_o       ),
+    .instr_gnt_i      ( instr_gnt_i       ),
+    .instr_rvalid_i   ( instr_rvalid_i    ),
+    .instr_addr_o     ( instr_addr_o      ),
+    .instr_rdata_i    ( instr_rdata_i     ),
+    .data_req_o       ( data_req_o        ),
+    .data_gnt_i       ( data_gnt_i        ),
+    .data_rvalid_i    ( data_rvalid_i     ),
+    .data_we_o        ( data_we_o         ),
+    .data_be_o        ( data_be_o         ),
+    .data_addr_o      ( data_addr_o       ),
+    .data_wdata_o     ( data_wdata_o      ),
+    .data_rdata_i     ( data_rdata_i      )
+  );
+
 endmodule

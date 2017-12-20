@@ -545,6 +545,14 @@ module zeroriscy_decoder
         end
 
       end
+
+      OPCODE_FENCE: begin // FENCE are implemented as NOP
+        alu_op_b_mux_sel_o  = OP_B_IMM;
+        imm_b_mux_sel_o     = IMMB_I;
+        //regfile_we          = 1'b1;
+        alu_operator_o      = ALU_ADD;  // Add Immediate
+      end
+
       default: begin
         illegal_insn_o = 1'b1;
       end
