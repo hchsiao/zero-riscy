@@ -76,7 +76,7 @@ module mem_mux
   assign data_req_dbg = data_req_i && data_dbg_sel;
   assign data_we_dbg = data_we_i;
   assign data_be_dbg = data_be_i;
-  assign data_addr_dbg = data_addr_i;
+  assign data_addr_dbg = data_addr_i - 'h20000000;
   assign data_wdata_dbg = data_wdata_i;
 
   assign instr_req_o = instr_req_i && !instr_dbg_sel;
@@ -84,7 +84,7 @@ module mem_mux
   assign data_req_o = data_req_i && !data_dbg_sel;
   assign data_we_o = data_we_i;
   assign data_be_o = data_be_i;
-  assign data_addr_o = data_addr_i;
+  assign data_addr_o = data_addr_i - 'h10000000;
   assign data_wdata_o = data_wdata_i;
 
 endmodule
