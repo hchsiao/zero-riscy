@@ -61,8 +61,8 @@ module mem_mux
   input  logic [31:0] data_rdata_i
 );
   
-  wire instr_dbg_sel = (instr_addr_i >= 'h20000000) && (instr_addr_i < 'h21000000);
-  wire data_dbg_sel = (data_addr_i >= 'h20000000) && (data_addr_i < 'h21000000);
+  wire instr_dbg_sel = (instr_addr_i >= 'h700) && (instr_addr_i < 'h800);
+  wire data_dbg_sel = (data_addr_i >= 'h700) && (data_addr_i < 'h800);
 
   assign instr_gnt_o = instr_dbg_sel ? instr_gnt_dbg : instr_gnt_i;
   assign instr_rvalid_o = instr_rvalid_dbg ? 1'b1 : instr_rvalid_i;
@@ -72,11 +72,11 @@ module mem_mux
   assign data_rdata_o = data_rvalid_dbg ? data_rdata_dbg : data_rdata_i;
 
   assign instr_req_dbg = instr_req_i && instr_dbg_sel;
-  assign instr_addr_dbg = instr_addr_i - 'h20000000;
+  assign instr_addr_dbg = instr_addr_i - 'h700;
   assign data_req_dbg = data_req_i && data_dbg_sel;
   assign data_we_dbg = data_we_i;
   assign data_be_dbg = data_be_i;
-  assign data_addr_dbg = data_addr_i - 'h20000000;
+  assign data_addr_dbg = data_addr_i - 'h700;
   assign data_wdata_dbg = data_wdata_i;
 
   assign instr_req_o = instr_req_i && !instr_dbg_sel;
