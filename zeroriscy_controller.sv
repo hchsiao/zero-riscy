@@ -115,7 +115,10 @@ module zeroriscy_controller
 
   // Performance Counters
   output logic        perf_jump_o,                // we are executing a jump instruction   (j, jr, jal, jalr)
-  output logic        perf_tbranch_o             // we are executing a taken branch instruction
+  output logic        perf_tbranch_o,             // we are executing a taken branch instruction
+
+  // RISC-V debugger
+  output logic        dpc_store_o
 );
 
   // FSM state encoding
@@ -184,6 +187,8 @@ module zeroriscy_controller
     irq_ack_o              = 1'b0;
     irq_id_o               = irq_id_ctrl_i;
     irq_enable_int         = m_IE_i;
+
+    dpc_store_o  = 1'b0;
 
     // a trap towards the debug unit is generated when one of the
     // following conditions are true:
@@ -371,6 +376,7 @@ module zeroriscy_controller
           pc_mux_o     = PC_DBG_NPC;
           pc_set_o     = 1'b1;
           ctrl_fsm_ns  = DBG_WAIT;
+          dpc_store_o  = 1'b1;
         end
 
         if (dbg_stall_i == 1'b0) begin
@@ -388,6 +394,7 @@ module zeroriscy_controller
           pc_mux_o     = PC_DBG_NPC;
           pc_set_o     = 1'b1;
           ctrl_fsm_ns  = DBG_WAIT;
+          dpc_store_o  = 1'b1;
         end
 
         if (dbg_stall_i == 1'b0) begin
@@ -456,6 +463,8 @@ module zeroriscy_controller
           ebrk_insn_i: begin
               dbg_trap_o    = dbg_settings_i[DBG_SETS_EBRK] | dbg_settings_i[DBG_SETS_SSTE];;
               exc_cause_o   = EXC_CAUSE_BREAKPOINT;
+              pc_mux_o      = PC_DBG_DPC;
+              pc_set_o      = 1'b1;
           end
           csr_status_i: begin
               dbg_trap_o    = dbg_settings_i[DBG_SETS_SSTE];

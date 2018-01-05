@@ -68,7 +68,10 @@ module zeroriscy_if_stage
       output logic        if_valid_o,
       // misc signals
       output logic        if_busy_o,             // is the IF stage busy fetching instructions?
-      output logic        perf_imiss_o           // Instruction Fetch Miss
+      output logic        perf_imiss_o,          // Instruction Fetch Miss
+
+      // RISC-V debugger
+      input  logic [31:0] dpc_i
     );
 
       // offset FSM
@@ -115,6 +118,7 @@ module zeroriscy_if_stage
             PC_EXCEPTION: fetch_addr_n = exc_pc;             // set PC to exception handler
             PC_ERET:      fetch_addr_n = exception_pc_reg_i; // PC is restored when returning from IRQ/exception
             PC_DBG_NPC:   fetch_addr_n = dbg_jump_addr_i;    // PC is taken from debug unit
+            PC_DBG_DPC:   fetch_addr_n = dpc_i;
 
             default:;
           endcase

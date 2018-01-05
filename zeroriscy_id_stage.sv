@@ -149,7 +149,10 @@ module zeroriscy_id_stage
     // Performance Counters
     output logic        perf_jump_o,          // we are executing a jump instruction
     output logic        perf_branch_o,        // we are executing a branch instruction
-    output logic        perf_tbranch_o        // we are executing a taken branch instruction
+    output logic        perf_tbranch_o,       // we are executing a taken branch instruction
+
+  // RISC-V debugger
+  output logic        dpc_store_o
 );
 
   logic [31:0] instr;
@@ -590,7 +593,10 @@ module zeroriscy_id_stage
 
     // Performance Counters
     .perf_jump_o                    ( perf_jump_o            ),
-    .perf_tbranch_o                 ( perf_tbranch_o         )
+    .perf_tbranch_o                 ( perf_tbranch_o         ),
+
+    // RISC-V debugger
+    .dpc_store_o       ( dpc_store_o          )
   );
 
 ////////////////////////////////////////////////////////////////////////

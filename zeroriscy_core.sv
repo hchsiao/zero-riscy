@@ -226,6 +226,12 @@ module zeroriscy_core
   //core busy signals
   logic        core_ctrl_firstfetch, core_busy_int, core_busy_q;
 
+  // RISC-V debug
+  logic        dpc_store;
+  logic [31:0] dpc;
+  logic        dbg_step;
+  logic [5:0]  dbg_cause;
+
   // ======================================
   //           INTERNAL
   // ======================================
@@ -371,7 +377,10 @@ module zeroriscy_core
     .if_valid_o          ( if_valid          ),
 
     .if_busy_o           ( if_busy           ),
-    .perf_imiss_o        ( perf_imiss        )
+    .perf_imiss_o        ( perf_imiss        ),
+
+    // RISC-V debugger
+    .dpc_i               ( dpc               )
   );
 
 
@@ -497,8 +506,10 @@ module zeroriscy_core
     // Performance Counters
     .perf_jump_o                  ( perf_jump            ),
     .perf_branch_o                ( perf_branch          ),
-    .perf_tbranch_o               ( perf_tbranch         )
+    .perf_tbranch_o               ( perf_tbranch         ),
 
+    // RISC-V debugger
+    .dpc_store_o       ( dpc_store          )
   );
 
 
@@ -649,7 +660,13 @@ module zeroriscy_core
     .mem_load_i              ( data_req_inter & data_gnt_inter & (~data_we_inter) ),
     .mem_store_i             ( data_req_inter & data_gnt_inter & data_we_inter    ),
 
-    .ext_counters_i          ( ext_perf_counters_i                    )
+    .ext_counters_i          ( ext_perf_counters_i                    ),
+
+    // RISC-V debug
+    .dpc_store_i       ( dpc_store          ),
+    .dpc_o             ( dpc                ),
+    .dbg_step_o        ( dbg_step           ),
+    .dbg_cause_i       ( dbg_cause          )
   );
 
   // Mux for CSR access through Debug Unit
@@ -736,7 +753,11 @@ module zeroriscy_core
     .data_we_i         ( data_we_dbg        ),
     .data_be_i         ( data_be_dbg        ),
     .data_wdata_i      ( data_wdata_dbg     ),
-    .data_rdata_o      ( data_rdata_dbg     )
+    .data_rdata_o      ( data_rdata_dbg     ),
+
+    // RISC-V
+    .dbg_step_i        ( dbg_step           ),
+    .dbg_cause_o       ( dbg_cause          )
   );
 
 `ifndef VERILATOR

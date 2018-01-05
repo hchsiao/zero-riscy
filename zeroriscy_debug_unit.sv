@@ -100,7 +100,11 @@ module zeroriscy_debug_unit
   input  logic [3:0]  data_be_i,
   input  logic [31:0] data_addr_i,
   input  logic [31:0] data_wdata_i,
-  output logic [31:0] data_rdata_o
+  output logic [31:0] data_rdata_o,
+
+  // RISC-V debug
+  input  logic        dbg_step_i,
+  output logic [5:0]  dbg_cause_o
 );
 
   //enum logic [2:0] {RD_NONE, RD_CSR, RD_GPR, RD_DBGA, RD_DBGS} rdata_sel_q, rdata_sel_n;
@@ -137,11 +141,12 @@ module zeroriscy_debug_unit
   logic [ 9:0] hartsel_q;
   logic        ndmreset_q;
   logic        dmactive_q;
-  logic        transfer_q;
-  logic        write_q;
-  logic [15:0] regno_q;
+  logic        resume_req_q, resume_req_n;
+  logic [15:0] abscmd_regno;
 
   logic        postexec_busy_q;
+  logic        xfer_valid_q, xfer_valid_n;
+  logic        trans_q, trans_n;
 
   logic [31:0] prog_buff[16];
   logic [31:0] arg_mem[12];
@@ -150,6 +155,8 @@ module zeroriscy_debug_unit
   wire         prog_buff_sel = (debug_addr_i >= 'h20) && (debug_addr_i < 'h30);
   wire         abstract_busy = jump_req_q | regfile_rreq_q;
   logic        cmderr_clear;
+  logic [15:0] autoexec_prog_q, autoexec_prog_n;
+  logic [11:0] autoexec_arg_q, autoexec_arg_n;
 
 
   // address decoding, write and read controller
@@ -170,8 +177,14 @@ module zeroriscy_debug_unit
     dbg_halt       = 1'b0;
     settings_n     = settings_q;
 
+    resume_req_n   = resume_req_q;
+    xfer_valid_n   = xfer_valid_q;
+    trans_n        = trans_q;
     ssth_clear     = 1'b0;
     cmderr_clear   = 1'b0;
+
+    autoexec_prog_n   = autoexec_prog_q;
+    autoexec_arg_n   = autoexec_arg_q;
 
     if (debug_req_i) begin
       if (debug_we_i) begin
@@ -179,36 +192,50 @@ module zeroriscy_debug_unit
         // write access
         //----------------------------------------------------------------------------
         // RISC-V
-        case (debug_addr_i)
-          dmcontrol: begin
-            if (!debug_halted_o && debug_wdata_i[31]) begin
-              // HALT set
-              dbg_halt = 1'b1;
-            end
-            else if (debug_halted_o && debug_wdata_i[30]) begin
-              // RESUME set
-              dbg_resume = 1'b1;
-            end
-          end
-          command: begin
-            if (debug_halted_o) begin
-              if (debug_wdata_i[31:24] == 0 && debug_wdata_i[18]) begin
-                // RF request |=> rdata ready, PC request |=> rdata saved, jumped
-                jump_req_n = 1'b1;
+        if (prog_buff_sel)
+          jump_req_n = autoexec_prog_q[debug_addr_i - 'h20];
+        else if (arg_mem_sel)
+          jump_req_n = autoexec_arg_q[debug_addr_i - 'h04];
+        else
+          case (debug_addr_i)
+            dmcontrol: begin
+              if (!debug_halted_o && debug_wdata_i[31]) begin
+                // HALT set
+                dbg_halt = 1'b1;
               end
-              if (debug_wdata_i[17] && debug_wdata_i[16]) begin
-                regfile_wreq = 1'b1;
-              end
-              if (debug_wdata_i[17] && !debug_wdata_i[16]) begin
-                regfile_rreq_n = 1'b1;
-                //rdata_sel_n    = RD_GPR;
+              else if (debug_halted_o && debug_wdata_i[30]) begin
+                // RESUME set
+                dbg_resume = 1'b1;
+                resume_req_n = 1'b1;
               end
             end
-          end
-          abstractcs: begin
-            cmderr_clear = 1'b1;
-          end
-        endcase
+            command: begin
+              trans_n = debug_wdata_i[17];
+              xfer_valid_n = (abscmd_regno >= 16'h1000) && (abscmd_regno <= 16'h101f); // TODO no magic number
+              if (debug_halted_o) begin
+                if (debug_wdata_i[31:24] == 0) begin
+                  if (debug_wdata_i[18]) begin
+                    // RF request |=> rdata ready, PC request |=> rdata saved, jumped
+                    jump_req_n = 1'b1;
+                  end
+                  if (trans_n && xfer_valid_n && debug_wdata_i[16]) begin
+                    regfile_wreq = 1'b1;
+                  end
+                  if (trans_n && xfer_valid_n && !debug_wdata_i[16]) begin
+                    regfile_rreq_n = 1'b1;
+                    //rdata_sel_n    = RD_GPR;
+                  end
+                end
+              end
+            end
+            abstractcs: begin
+              cmderr_clear = 1'b1;
+            end
+            abstractauto: begin
+              autoexec_prog_n = debug_wdata_i[31:16];
+              autoexec_arg_n = debug_wdata_i[11:0];
+            end
+          endcase
 
         if (debug_addr_i[14]) begin
           // CSR access
@@ -256,33 +283,18 @@ module zeroriscy_debug_unit
         //----------------------------------------------------------------------------
         // read access
         //----------------------------------------------------------------------------
-        if (debug_addr_i[14]) begin
-          debug_gnt_o = 1'b1; // grant it even when invalid access to not block
+        debug_gnt_o = 1'b1; // grant it even when invalid access to not block
+        // RISC-V
+        //case (debug_addr_i)
+        //endcase
 
-          // CSR access
-          if (debug_halted_o) begin
-            // access to internal registers are only allowed when the core is halted
-            //csr_req_n   = 1'b1;
-            //rdata_sel_n = RD_CSR;
+        case (addr_q)
+          dmstatus: begin
+            // when resumed and this field read -> clear this field
+            resume_req_n = debug_halted_o ? resume_req_q : 1'b0;
           end
-        end else begin
-          // non-CSR access
-          unique case (debug_addr_i[13:8])
-            6'b00_0000: begin // Debug Registers, always accessible
-              debug_gnt_o = 1'b1;
+        endcase
 
-              //rdata_sel_n = RD_DBGA;
-            end
-
-            6'b10_0000: begin // Debug Registers, only accessible when in debug
-              debug_gnt_o = 1'b1; // grant it even when invalid access to not block
-
-              //rdata_sel_n = RD_DBGS;
-            end
-
-            default: debug_gnt_o = 1'b1; // grant it even when invalid access to not block
-          endcase
-        end
       end
     end
   end
@@ -302,7 +314,9 @@ module zeroriscy_debug_unit
     else
       case(addr_q)
         dmstatus: dbg_rdata = {
-          16'b0,
+          14'b0,
+          resume_req_q,
+          resume_req_q,
           (hartsel_q != 0),
           (hartsel_q != 0),
           2'b0,
@@ -329,6 +343,7 @@ module zeroriscy_debug_unit
           abstract_busy,
           1'd0,
           postexec_busy_q                           ? 3'h1:
+          (trans_q & (~xfer_valid_q))               ? 3'h3:
           (EXC_CAUSE_ILLEGAL_INSN == dbg_cause_q)   ? 3'h3: // exception
           (EXC_CAUSE_ECALL_MMODE  == dbg_cause_q)   ? 3'h0: // ECALL
           (EXC_CAUSE_BREAKPOINT   == dbg_cause_q)   ? 3'h0: // EBREAK
@@ -526,10 +541,14 @@ module zeroriscy_debug_unit
       hartsel_q          <= 1'b0;
       ndmreset_q         <= 1'b0;
       dmactive_q         <= 1'b0;
-      transfer_q         <= 1'b0;
-      write_q            <= 1'b0;
-      regno_q            <= 1'b0;
       postexec_busy_q    <= 1'b0;
+
+      resume_req_q       <= 1'b0;
+      xfer_valid_q       <= 1'b0;
+      trans_q            <= 1'b0;
+
+      autoexec_prog_q    <= 16'b0;
+      autoexec_arg_q     <= 12'b0;
     end else begin
 
       // settings
@@ -560,19 +579,19 @@ module zeroriscy_debug_unit
             ndmreset_q = debug_wdata_i[1];
             dmactive_q = debug_wdata_i[0];
           end
-          command: begin
-            if(0 == debug_wdata_i[31:24]) begin // TODO: check busy...
-              transfer_q <= debug_wdata_i[17];
-              write_q <= debug_wdata_i[16];
-              regno_q <= debug_wdata_i[15:0];
-            end
-          end
           default: begin
             if (prog_buff_sel)
               prog_buff[debug_addr_i - 'h20] <= debug_wdata_i;
           end
         endcase
       end
+
+      resume_req_q      <= resume_req_n;
+      xfer_valid_q      <= xfer_valid_n;
+      trans_q           <= trans_n;
+
+      autoexec_prog_q   <= autoexec_prog_n;
+      autoexec_arg_q    <= autoexec_arg_n;
 
       if (!postexec_busy_q)
         postexec_busy_q <= jump_req_n;
@@ -586,11 +605,13 @@ module zeroriscy_debug_unit
     end
   end
 
-  assign regfile_rreq_o  = regfile_rreq_n;
-  assign regfile_raddr_o = debug_addr_i[(REG_ADDR_WIDTH-1):0];
+  assign abscmd_regno = debug_wdata_i[15:0];
+
+  assign regfile_rreq_o  = regfile_rreq_q;
+  assign regfile_raddr_o = abscmd_regno[(REG_ADDR_WIDTH-1):0];
 
   assign regfile_wreq_o  = regfile_wreq;
-  assign regfile_waddr_o = debug_addr_i[(REG_ADDR_WIDTH-1):0];
+  assign regfile_waddr_o = abscmd_regno[(REG_ADDR_WIDTH-1):0];
   assign regfile_wdata_o = arg_mem[0];
 
   // CSR access disabled
@@ -602,19 +623,19 @@ module zeroriscy_debug_unit
   assign jump_req_o      = jump_req_q;
   assign jump_addr_o     = `PB_BASE_ADDR;
 
-  assign settings_o      = postexec_busy_q ? 6'b111110 : settings_q;
+  assign settings_o      = postexec_busy_q ? 6'b111110 : {settings_q[DBG_SETS_W-1:1], dbg_step_i};
 
   //----------------------------------------------------------------------------
   // Assertions
   //----------------------------------------------------------------------------
 `ifndef VERILATOR
   // check that no registers are accessed when we are not in debug mode
-  assert property (
-      @(posedge clk) disable iff(~rst_n) (debug_req_i) |-> ((debug_halted_o == 1'b1) ||
-                                      ((debug_addr_i[14] != 1'b1) &&
-                                       (debug_addr_i[13:7] != 5'b0_1001)  &&
-                                       (debug_addr_i[13:7] != 5'b0_1000)) ) )
-    else $warning("Trying to access internal debug registers while core is not stalled");
+  //assert property (
+  //    @(posedge clk) disable iff(~rst_n) (debug_req_i) |-> ((debug_halted_o == 1'b1) ||
+  //                                    ((debug_addr_i[14] != 1'b1) &&
+  //                                     (debug_addr_i[13:7] != 5'b0_1001)  &&
+  //                                     (debug_addr_i[13:7] != 5'b0_1000)) ) )
+  //  else $warning("Trying to access internal debug registers while core is not stalled");
 
   // check that all accesses are word-aligned
   //assert property (
@@ -634,6 +655,8 @@ module zeroriscy_debug_unit
                          data_addr_q/4 < 16 + 12 ? arg_mem[data_addr_q/4-16]:
                          0;
 
+  assign dbg_cause_o = dbg_cause_q;
+
   always @ (posedge clk, negedge rst_n) begin
     if(~rst_n) begin
       instr_addr_q <= 0;
@@ -645,19 +668,19 @@ module zeroriscy_debug_unit
 
       if(data_req_i) begin
         if(data_we_i && (|data_be_i)) begin
-          if(data_addr_i < 16)
-            prog_buff[data_addr_i] <= {
-              data_be_i[3] ? data_wdata_i[31:24] : prog_buff[data_addr_i][31:24],
-              data_be_i[2] ? data_wdata_i[23:16] : prog_buff[data_addr_i][23:16],
-              data_be_i[1] ? data_wdata_i[15: 8] : prog_buff[data_addr_i][15: 8],
-              data_be_i[0] ? data_wdata_i[ 7: 0] : prog_buff[data_addr_i][ 7: 0]
+          if(data_addr_i/4 < 16)
+            prog_buff[data_addr_i/4] <= {
+              data_be_i[3] ? data_wdata_i[31:24] : prog_buff[data_addr_i/4][31:24],
+              data_be_i[2] ? data_wdata_i[23:16] : prog_buff[data_addr_i/4][23:16],
+              data_be_i[1] ? data_wdata_i[15: 8] : prog_buff[data_addr_i/4][15: 8],
+              data_be_i[0] ? data_wdata_i[ 7: 0] : prog_buff[data_addr_i/4][ 7: 0]
             };
-          else if(data_addr_i < 16 + 12)
-            arg_mem[data_addr_i] <= {
-              data_be_i[3] ? data_wdata_i[31:24] : arg_mem[data_addr_i-16][31:24],
-              data_be_i[2] ? data_wdata_i[23:16] : arg_mem[data_addr_i-16][23:16],
-              data_be_i[1] ? data_wdata_i[15: 8] : arg_mem[data_addr_i-16][15: 8],
-              data_be_i[0] ? data_wdata_i[ 7: 0] : arg_mem[data_addr_i-16][ 7: 0]
+          else if(data_addr_i/4 < 16 + 12)
+            arg_mem[data_addr_i/4] <= {
+              data_be_i[3] ? data_wdata_i[31:24] : arg_mem[data_addr_i/4-16][31:24],
+              data_be_i[2] ? data_wdata_i[23:16] : arg_mem[data_addr_i/4-16][23:16],
+              data_be_i[1] ? data_wdata_i[15: 8] : arg_mem[data_addr_i/4-16][15: 8],
+              data_be_i[0] ? data_wdata_i[ 7: 0] : arg_mem[data_addr_i/4-16][ 7: 0]
             };
         end
       end

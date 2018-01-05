@@ -85,7 +85,13 @@ module zeroriscy_cs_registers
   input  logic                 branch_taken_i,    // branch was taken
   input  logic                 mem_load_i,        // load from memory in this cycle
   input  logic                 mem_store_i,       // store to memory in this cycle
-  input  logic [N_EXT_CNT-1:0] ext_counters_i
+  input  logic [N_EXT_CNT-1:0] ext_counters_i,
+
+  // RISC-V debugger
+  input  logic        dpc_store_i,
+  output logic [31:0] dpc_o,
+  output logic        dbg_step_o,
+  input  logic [5:0]  dbg_cause_i
 );
 
   localparam N_PERF_COUNTERS = 11 + N_EXT_CNT;
@@ -145,6 +151,11 @@ module zeroriscy_cs_registers
   logic [ 5:0] mcause_q, mcause_n;
   Status_t mstatus_q, mstatus_n;
 
+  // RISC-V Debug
+  logic        step_q, step_n;
+  logic [31:0] dscratch_q, dscratch_n;
+  logic [31:0] dpc_q, dpc_n;
+
   ////////////////////////////////////////////
   //   ____ ____  ____    ____              //
   //  / ___/ ___||  _ \  |  _ \ ___  __ _   //
@@ -180,6 +191,23 @@ module zeroriscy_cs_registers
       // mhartid: unique hardware thread id
       12'hF14: csr_rdata_int = {21'b0, cluster_id_i[5:0], 1'b0, core_id_i[3:0]};
 		
+      // dcsr
+      12'h7B0: csr_rdata_int = {
+        4'h4,
+        12'h0,
+        EXC_CAUSE_BREAKPOINT == dbg_cause_i,
+        6'h0,
+        (EXC_CAUSE_BREAKPOINT   == dbg_cause_i)   ? 3'h1: // EBREAK
+        (0                      == dbg_cause_i)   ? 3'h4: // step
+                                                    3'h3,
+        3'h0,
+        step_q,
+        2'h3
+      };
+      // dpc
+      12'h7B1: csr_rdata_int = dpc_q;
+      12'h7B2: csr_rdata_int = dscratch_q;
+		
 		default: ;
     endcase
   end
@@ -191,6 +219,9 @@ module zeroriscy_cs_registers
     mepc_n       = mepc_q;
     mstatus_n    = mstatus_q;
     mcause_n     = mcause_q;
+    step_n       = step_q;
+    dscratch_n   = dscratch_q;
+    dpc_n        = dpc_q;
 
     case (csr_addr_i)
       // mstatus: IE bit
@@ -205,6 +236,10 @@ module zeroriscy_cs_registers
       12'h341: if (csr_we_int) mepc_n = csr_wdata_int;
       // mcause
       12'h342: if (csr_we_int) mcause_n = {csr_wdata_int[31], csr_wdata_int[4:0]};
+      // dcsr
+      12'h7B0: if (csr_we_int) step_n = csr_wdata_int[2];
+      12'h7B1: if (csr_we_int) dpc_n = csr_wdata_int;
+      12'h7B2: if (csr_we_int) dscratch_n = csr_wdata_int;
 		default: ;
     endcase
 
@@ -232,6 +267,9 @@ module zeroriscy_cs_registers
       default:;
 
     endcase
+
+    if (dpc_store_i)
+      dpc_n = pc_if_i;
 
   end
 
@@ -271,7 +309,8 @@ module zeroriscy_cs_registers
   // directly output some registers
   assign m_irq_enable_o  = mstatus_q.mie;
   assign mepc_o          = mepc_q;
-
+  assign dbg_step_o      = step_q;
+  assign dpc_o           = dpc_q;
 
   // actual registers
   always_ff @(posedge clk, negedge rst_n)
@@ -285,6 +324,9 @@ module zeroriscy_cs_registers
             };
       mepc_q     <= '0;
       mcause_q   <= '0;
+      step_q     <= '0;
+      dscratch_q <= '0;
+      dpc_q      <= '0;
     end
     else
     begin
@@ -296,6 +338,9 @@ module zeroriscy_cs_registers
               };
       mepc_q     <= mepc_n;
       mcause_q   <= mcause_n;
+      step_q     <= step_n;
+      dscratch_q <= dscratch_n;
+      dpc_q      <= dpc_n;
     end
   end
 
@@ -342,14 +387,14 @@ module zeroriscy_cs_registers
     // only perform csr access if we actually care about the read data
     if (csr_access_i) begin
       unique case (csr_addr_i)
-        12'h7A0: begin
-          is_pcer = 1'b1;
-          perf_rdata[15:0] = PCER_q;
-        end
-        12'h7A1: begin
-          is_pcmr = 1'b1;
-          perf_rdata[1:0] = PCMR_q;
-        end
+        //12'h7A0: begin
+        //  is_pcer = 1'b1;
+        //  perf_rdata[15:0] = PCER_q;
+        //end
+        //12'h7A1: begin
+        //  is_pcmr = 1'b1;
+        //  perf_rdata[1:0] = PCMR_q;
+        //end
         12'h79F: begin
           is_pccr = 1'b1;
           pccr_all_sel = 1'b1;
