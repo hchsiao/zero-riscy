@@ -534,10 +534,6 @@ module zeroriscy_debug_unit
       settings_q         <= 1'b0;
 
       // RISC-V debug spec
-      for(i = 0; i < 16; i=i+1)
-        prog_buff[i] <= 0;
-      for(i = 0; i < 12; i=i+1)
-        arg_mem[i] <= 0;
       hartsel_q          <= 1'b0;
       ndmreset_q         <= 1'b0;
       dmactive_q         <= 1'b0;
@@ -575,13 +571,11 @@ module zeroriscy_debug_unit
       if (debug_req_i && debug_we_i) begin
         case(debug_addr_i)
           dmcontrol: begin // TODO: name these constants
-            hartsel_q = debug_wdata_i[25:16];
-            ndmreset_q = debug_wdata_i[1];
-            dmactive_q = debug_wdata_i[0];
+            hartsel_q <= debug_wdata_i[25:16];
+            ndmreset_q <= debug_wdata_i[1];
+            dmactive_q <= debug_wdata_i[0];
           end
           default: begin
-            if (prog_buff_sel)
-              prog_buff[debug_addr_i - 'h20] <= debug_wdata_i;
           end
         endcase
       end
@@ -597,11 +591,6 @@ module zeroriscy_debug_unit
         postexec_busy_q <= jump_req_n;
       else if (trap_i)
         postexec_busy_q <= jump_req_n;
-
-      if (regfile_rreq_q)
-        arg_mem[0] <= regfile_rdata_i;
-      else if(debug_req_i && debug_we_i && arg_mem_sel)
-        arg_mem[debug_addr_i - 'h04] <= debug_wdata_i;
     end
   end
 
@@ -661,12 +650,40 @@ module zeroriscy_debug_unit
     if(~rst_n) begin
       instr_addr_q <= 0;
       data_addr_q <= 0;
+      for(i = 0; i < 16; i=i+1)
+        prog_buff[i] <= 0;
+      for(i = 0; i < 12; i=i+1)
+        arg_mem[i] <= 0;
     end
     else begin
       instr_addr_q <= instr_addr_i;
       data_addr_q <= data_addr_i;
 
-      if(data_req_i) begin
+      if (regfile_rreq_q)
+        arg_mem[0] <= regfile_rdata_i;
+      else if(debug_req_i && debug_we_i && arg_mem_sel)
+        arg_mem[debug_addr_i - 'h04] <= debug_wdata_i;
+      else if(data_req_i) begin
+        if(data_we_i && (|data_be_i)) begin
+          if(data_addr_i/4 < 16 + 12)
+            arg_mem[data_addr_i/4] <= {
+              data_be_i[3] ? data_wdata_i[31:24] : arg_mem[data_addr_i/4-16][31:24],
+              data_be_i[2] ? data_wdata_i[23:16] : arg_mem[data_addr_i/4-16][23:16],
+              data_be_i[1] ? data_wdata_i[15: 8] : arg_mem[data_addr_i/4-16][15: 8],
+              data_be_i[0] ? data_wdata_i[ 7: 0] : arg_mem[data_addr_i/4-16][ 7: 0]
+            };
+        end
+      end
+
+      if (debug_req_i && debug_we_i) begin
+        case(debug_addr_i)
+          default: begin
+            if (prog_buff_sel)
+              prog_buff[debug_addr_i - 'h20] <= debug_wdata_i;
+          end
+        endcase
+      end
+      else if(data_req_i) begin
         if(data_we_i && (|data_be_i)) begin
           if(data_addr_i/4 < 16)
             prog_buff[data_addr_i/4] <= {
@@ -674,13 +691,6 @@ module zeroriscy_debug_unit
               data_be_i[2] ? data_wdata_i[23:16] : prog_buff[data_addr_i/4][23:16],
               data_be_i[1] ? data_wdata_i[15: 8] : prog_buff[data_addr_i/4][15: 8],
               data_be_i[0] ? data_wdata_i[ 7: 0] : prog_buff[data_addr_i/4][ 7: 0]
-            };
-          else if(data_addr_i/4 < 16 + 12)
-            arg_mem[data_addr_i/4] <= {
-              data_be_i[3] ? data_wdata_i[31:24] : arg_mem[data_addr_i/4-16][31:24],
-              data_be_i[2] ? data_wdata_i[23:16] : arg_mem[data_addr_i/4-16][23:16],
-              data_be_i[1] ? data_wdata_i[15: 8] : arg_mem[data_addr_i/4-16][15: 8],
-              data_be_i[0] ? data_wdata_i[ 7: 0] : arg_mem[data_addr_i/4-16][ 7: 0]
             };
         end
       end
