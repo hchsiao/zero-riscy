@@ -129,6 +129,7 @@ module zeroriscy_controller
   logic irq_enable_int;
 
   logic jump_set_reg;
+  logic dbg_after_jmp;
 
 `ifndef SYNTHESIS
   // synopsys translate_off
@@ -181,6 +182,7 @@ module zeroriscy_controller
 
     ctrl_busy_o            = 1'b1;
     is_decoding_o          = 1'b0;
+    dbg_after_jmp          = 1'b0;
     first_fetch_o          = 1'b0;
 
     halt_if_o              = 1'b0;
@@ -355,7 +357,7 @@ module zeroriscy_controller
       DBG_SIGNAL:
       begin
         if (jump_set_reg)
-          is_decoding_o = 1'b1;
+          dbg_after_jmp = 1'b1;
         dbg_ack_o  = 1'b1;
         halt_if_o  = 1'b1;
 
@@ -513,7 +515,7 @@ module zeroriscy_controller
     deassert_we_o  = 1'b0;
 
     // deassert WE when the core is not decoding instructions
-    if (~is_decoding_o)
+    if (~is_decoding_o && ~dbg_after_jmp)
       deassert_we_o = 1'b1;
 
     // deassert WE in case of illegal instruction
