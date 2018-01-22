@@ -128,6 +128,8 @@ module zeroriscy_controller
 
   logic irq_enable_int;
 
+  logic jump_set_reg;
+
 `ifndef SYNTHESIS
   // synopsys translate_off
   // make sure we are called later so that we do not generate messages for
@@ -352,6 +354,8 @@ module zeroriscy_controller
       // can examine our current state
       DBG_SIGNAL:
       begin
+        if (jump_set_reg)
+          is_decoding_o = 1'b1;
         dbg_ack_o  = 1'b1;
         halt_if_o  = 1'b1;
 
@@ -526,11 +530,14 @@ module zeroriscy_controller
     if ( rst_n == 1'b0 )
     begin
       ctrl_fsm_cs <= RESET;
+      jump_set_reg <= 'b0;
       //jump_done_q <= 1'b0;
     end
     else
     begin
       ctrl_fsm_cs <= ctrl_fsm_ns;
+      if (jump_set_i) jump_set_reg <= 'b1;
+      if (~jump_set_i || jump_set_reg) jump_set_reg <= 'b0;
       // clear when id is valid (no instruction incoming)
       //jump_done_q <= jump_done & (~id_ready_i);
     end
