@@ -296,10 +296,10 @@ parameter EXC_CAUSE_ECALL_MMODE  = 6'h0B;
 // Exceptions offsets
 // target address = {boot_addr[31:8], EXC_OFF} (boot_addr must be 32 BYTE aligned!)
 // offset 00 to 7e is used for external interrupts
-parameter EXC_OFF_RST      = 8'h80;
-parameter EXC_OFF_ILLINSN  = 8'h84;
-parameter EXC_OFF_ECALL    = 8'h88;
-parameter EXC_OFF_LSUERR   = 8'h8c;
+parameter EXC_OFF_RST      = 8'h00;
+parameter EXC_OFF_ILLINSN  = 8'h04;
+parameter EXC_OFF_ECALL    = 8'h08;
+parameter EXC_OFF_LSUERR   = 8'h0c;
 
 
 // Debug module
